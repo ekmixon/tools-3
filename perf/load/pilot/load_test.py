@@ -37,15 +37,19 @@ def config_push_converge_query(prom: Prometheus, svc: str = "svc-0", namespace: 
     )
     result = prom.fetch_by_query(
         'count(envoy_cluster_upstream_cx_total{cluster_name=~".*pilot-load.*"}) by (cluster_name)')
-    if not result:
-        return []
-    return [(point['metric'], point['value'][1])
-            for point in result['data']['result']]
+    return (
+        [
+            (point['metric'], point['value'][1])
+            for point in result['data']['result']
+        ]
+        if result
+        else []
+    )
 
 
 def setup_pilot_loadtest(instance, svc_entry: int):
     helm = 'serviceEntries=%d,instances=%d' % (svc_entry, instance)
-    print('setup the loads, %s' % helm)
+    print(f'setup the loads, {helm}')
     env = os.environ
     env['HELM_FLAGS'] = helm
     p = subprocess.Popen([
@@ -71,7 +75,7 @@ def testall(svc: int, se: int):
     start = time.time()
     # ensure version is converged.
     wait_till_converge(prom)
-    print('version converged in %s seconds ' % (time.time() - start))
+    print(f'version converged in {time.time() - start} seconds ')
 
 
 def init_parser():

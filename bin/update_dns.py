@@ -61,16 +61,16 @@ def register_addr(zone, ip, domain):
     # get the domain managed by this zone
     soa_rec = find_rs(rs, "SOA")
     if soa_rec is None:
-        raise DNSException("Could not get SOA record for zone " + zone.name)
+        raise DNSException(f"Could not get SOA record for zone {zone.name}")
 
     zone_domain = soa_rec.name
 
     if not domain.endswith(zone_domain):
-        raise DNSException(domain + " must be a subdomain of " + zone_domain)
+        raise DNSException(f"{domain} must be a subdomain of {zone_domain}")
 
-    ingress = "ingress-" + domain
-    cname = "*." + domain
-    ptr = ".".join(reversed(ip.split('.'))) + ".{}".format(zone_domain)
+    ingress = f"ingress-{domain}"
+    cname = f"*.{domain}"
+    ptr = ".".join(reversed(ip.split('.'))) + f".{zone_domain}"
 
     ingress_rec = find_rs(rs, "A", ingress)
     cname_rec = find_rs(rs, "CNAME", cname)
@@ -102,7 +102,7 @@ def get_zone(zone_name, project_id=None):
     client = dns.Client(project=project_id)
     zone = client.zone(zone_name)
     if not zone.exists():
-        raise DNSException(zone_name + " does not exist")
+        raise DNSException(f"{zone_name} does not exist")
 
     return zone
 

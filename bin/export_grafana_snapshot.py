@@ -53,9 +53,9 @@ class GrafanaAPI(object):
 
         # init request session
         self.session = requests.Session()
-        self.session.headers.update({
-            "Authorization": "Bearer {}".format(self.grafana_api_token)
-        })
+        self.session.headers.update(
+            {"Authorization": f"Bearer {self.grafana_api_token}"}
+        )
 
     def get_dashboard_by_uid(self, uid):
         """
@@ -143,8 +143,9 @@ def persist(datastore_client, dashboard, snapshot_url, kind='Snapshot'):
     # Saves the entity
     datastore_client.put(snapshot)
 
-    print('Saved snapshot url {} for dashboard {}'.
-          format(snapshot['url'], dashboard['title']))
+    print(
+        f"Saved snapshot url {snapshot['url']} for dashboard {dashboard['title']}"
+    )
 
 
 def export_snapshot(dashboard, dashboard_url, datastore_client, timeout):

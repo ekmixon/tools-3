@@ -41,9 +41,14 @@ class Prometheus(object):
         os.kill(self.pid, signal.SIGKILL)
 
     def fetch_by_query(self, query: str) -> dict:
-        resp = requests.get(self.url + '/api/v1/query', {
-            'query': query,
-        }, headers=self.headers)
+        resp = requests.get(
+            f'{self.url}/api/v1/query',
+            {
+                'query': query,
+            },
+            headers=self.headers,
+        )
+
 
         if not resp.ok:
             raise Exception(str(resp))
@@ -56,16 +61,13 @@ class Prometheus(object):
         TODO: the first result is always used. Future use cases may need to change this.
         """
         resp = self.fetch_by_query(query)['data']['result']
-        if not resp:
-            return default
-        return float(resp[0]['value'][1])
+        return float(resp[0]['value'][1]) if resp else default
 
     def run_query(self, query: Query, debug: bool = False) -> List[str]:
         errors = []
         r = self.fetch_value(query.query)
         if query.alarm.in_alarm(r):
-            errors.append('{} Response: {}'.format(
-                query.alarm.error_message, r))
+            errors.append(f'{query.alarm.error_message} Response: {r}')
         if debug:
             print('Testing: %s. Result: %f.' % (query.description, r))
         return errors

@@ -63,9 +63,7 @@ def send(channel, message):
 
 
 def attempt_decode(s):
-    if s is None:
-        return ""
-    return s.decode('utf-8')
+    return "" if s is None else s.decode('utf-8')
 
 
 def receive(channel, expected):
@@ -86,8 +84,8 @@ def run_test():
         logging.error("Failed to setup client")
         sys.exit(1)
 
+    message = "a message"
     while True:
-        message = "a message"
         send(pub, message)
         receive(sub, message)
         time.sleep(.5)

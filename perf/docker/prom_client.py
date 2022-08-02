@@ -45,15 +45,13 @@ def attempt_request(f, source, destination, valid=None):
         else:
             succeeded = False
             logging.error(
-                "Request from {} to {} had invalid response: {}".format(
-                    source, destination, response))
+                f"Request from {source} to {destination} had invalid response: {response}"
+            )
+
 
         REQUESTS.labels(source, destination, succeeded).inc()
         return response, succeeded
     except BaseException:
-        logging.exception("Request from {} to {} had an exception".format(
-            source,
-            destination
-        ))
+        logging.exception(f"Request from {source} to {destination} had an exception")
         REQUESTS.labels(source, destination, False).inc()
         return None, False

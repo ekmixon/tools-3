@@ -39,9 +39,7 @@ if os.environ.get("DEBUG", "0") != "0":
 
 def calculate_average(item, resource_type):
     data_points_list = item["values"]
-    data_sum = 0
-    for data_point in data_points_list:
-        data_sum += float(data_point[1])
+    data_sum = sum(float(data_point[1]) for data_point in data_points_list)
     data_avg = float(data_sum / len(data_points_list))
     if resource_type == "cpu":
         return to_mili_cpus(data_avg)
@@ -90,12 +88,12 @@ class Prom:
         self.aggregate = aggregate
 
     def fetch_by_query(self, query):
-        resp = requests.get(self.url + "/api/v1/query_range", {
-            "query": query,
-            "start": self.start,
-            "end": self.end,
-            "step": 15
-        }, headers=self.headers)
+        resp = requests.get(
+            f"{self.url}/api/v1/query_range",
+            {"query": query, "start": self.start, "end": self.end, "step": 15},
+            headers=self.headers,
+        )
+
 
         if not resp.ok:
             raise Exception(str(resp))
@@ -116,22 +114,22 @@ class Prom:
     def fetch_istio_proxy_cpu_usage_by_pod_name(self):
         cpu_query = 'sum(rate(container_cpu_usage_seconds_total{job="kubernetes-cadvisor",container="istio-proxy"}[1m])) by (pod)'
         data = self.fetch_by_query(cpu_query)
-        avg_cpu_dict = get_average_within_query_time_range(data, "cpu")
-        return avg_cpu_dict
+        return get_average_within_query_time_range(data, "cpu")
 
     def fetch_istio_proxy_memory_usage_by_pod_name(self):
         mem_query = 'container_memory_usage_bytes{job = "kubernetes-cadvisor", container="istio-proxy"}'
         data = self.fetch_by_query(mem_query)
-        avg_mem_dict = get_average_within_query_time_range(data, "mem")
-        return avg_mem_dict
+        return get_average_within_query_time_range(data, "mem")
 
     def fetch_istio_proxy_cpu_and_mem(self):
-        out = {}
-
         avg_cpu_dict = self.fetch_istio_proxy_cpu_usage_by_pod_name()
-        out["cpu_mili_avg_istio_proxy_fortioclient"] = avg_cpu_dict["fortioclient"]
-        out["cpu_mili_avg_istio_proxy_fortioserver"] = avg_cpu_dict["fortioserver"]
-        out["cpu_mili_avg_istio_proxy_istio-ingressgateway"] = avg_cpu_dict["istio-ingressgateway"]
+        out = {
+            "cpu_mili_avg_istio_proxy_fortioclient": avg_cpu_dict["fortioclient"],
+            "cpu_mili_avg_istio_proxy_fortioserver": avg_cpu_dict["fortioserver"],
+            "cpu_mili_avg_istio_proxy_istio-ingressgateway": avg_cpu_dict[
+                "istio-ingressgateway"
+            ],
+        }
 
         avg_mem_dict = self.fetch_istio_proxy_memory_usage_by_pod_name()
         out["mem_Mi_avg_istio_proxy_fortioclient"] = avg_mem_dict["fortioclient"]
@@ -167,33 +165,22 @@ class Prom:
             str(
                 self.nseconds) +
             's]))')
-        if data["data"]["result"]:
-            return data["data"]["result"][0]["values"]
-        return []
+        return data["data"]["result"][0]["values"] if data["data"]["result"] else []
 
     def fetch_500s_and_400s(self):
-        res = {}
         data_404 = self.fetch_num_requests_by_response_code(404)
         data_503 = self.fetch_num_requests_by_response_code(503)
         data_504 = self.fetch_num_requests_by_response_code(504)
-        if data_404:
-            res["istio_requests_total_404"] = data_404[-1][1]
-        else:
-            res["istio_requests_total_404"] = "0"
-        if data_503:
-            res["istio_requests_total_503"] = data_503[-1][1]
-        else:
-            res["istio_requests_total_503"] = "0"
-        if data_504:
-            res["istio_requests_total_504"] = data_504[-1][1]
-        else:
-            res["istio_requests_total_504"] = "0"
-        return res
+        return {
+            "istio_requests_total_404": data_404[-1][1] if data_404 else "0",
+            "istio_requests_total_503": data_503[-1][1] if data_503 else "0",
+            "istio_requests_total_504": data_504[-1][1] if data_504 else "0",
+        }
 
     def fetch_sum_by_metric_name(self, metric, groupby=None):
-        query = 'sum(rate(' + metric + '[' + str(self.nseconds) + 's]))'
+        query = f'sum(rate({metric}[{str(self.nseconds)}s]))'
         if groupby is not None:
-            query = query + ' by (' + groupby + ')'
+            query = f'{query} by ({groupby})'
 
         data = self.fetch_by_query(query)
         res = {}
@@ -201,11 +188,10 @@ class Prom:
             if groupby is not None:
                 for i in range(len(data["data"]["result"])):
                     key = data["data"]["result"][i]["metric"][groupby]
-                    values = data["data"]["result"][i]["values"]
-                    if values:
-                        res[metric + "_" + key] = values[-1][1]
+                    if values := data["data"]["result"][i]["values"]:
+                        res[f"{metric}_{key}"] = values[-1][1]
                     else:
-                        res[metric + "_" + key] = "0"
+                        res[f"{metric}_{key}"] = "0"
             else:
                 values = data["data"]["result"][0]["values"]
                 res[metric] = values[-1][1]
@@ -214,21 +200,25 @@ class Prom:
         return res
 
     def fetch_histogram_by_metric_name(self, metric, percent, groupby):
-        query = 'histogram_quantile(' + percent + ', sum(rate(' + metric + \
-            '{}[' + str(self.nseconds) + 's])) by (' + \
-            groupby + ', le)) * 1000'
+        query = (
+            (
+                (f'histogram_quantile({percent}, sum(rate({metric}' + '{}[')
+                + str(self.nseconds)
+                + 's])) by ('
+            )
+            + groupby
+        ) + ', le)) * 1000'
+
 
         data = self.fetch_by_query(query)
         res = {}
         if data["data"]["result"]:
             for i in range(len(data["data"]["result"])):
                 key = data["data"]["result"][i]["metric"][groupby]
-                values = data["data"]["result"][i]["values"]
-                if values:
-                    res[metric + "_" + percent + "_" +
-                        key] = values[-1][1]
+                if values := data["data"]["result"][i]["values"]:
+                    res[(f"{metric}_{percent}_" + key)] = values[-1][1]
                 else:
-                    res[metric + "_" + percent + "_" + key] = "0"
+                    res[f"{metric}_{percent}_{key}"] = "0"
         return res
 
     def fetch_server_error_rate(self):
@@ -239,12 +229,11 @@ class Prom:
         if data["data"]["result"]:
             for i in range(len(data["data"]["result"])):
                 key = data["data"]["result"][i]["metric"]["grpc_method"]
-                values = data["data"]["result"][i]["values"]
-                if values:
+                if values := data["data"]["result"][i]["values"]:
                     res["grpc_server_handled_total_5xx_" +
                         key] = values[-1][1]
                 else:
-                    res["grpc_server_handled_total_5xx_" + key] = "0"
+                    res[f"grpc_server_handled_total_5xx_{key}"] = "0"
         else:
             res["grpc_server_handled_total_5xx"] = "0"
         return res
@@ -258,11 +247,11 @@ def flatten(data, metric, aggregate):
         grp = grp.replace("-", "_")
         grp = grp.replace("/", "_")
         if aggregate:
-            res[metric + "_min_" + grp] = summary[0]
-            res[metric + "_avg_" + grp] = summary[1]
-            res[metric + "_max_" + grp] = summary[2]
+            res[f"{metric}_min_{grp}"] = summary[0]
+            res[f"{metric}_avg_{grp}"] = summary[1]
+            res[f"{metric}_max_{grp}"] = summary[2]
         else:
-            res[metric + '_' + grp] = summary
+            res[f'{metric}_{grp}'] = summary
     return res
 
 
@@ -291,22 +280,22 @@ def metric_by_deployment_by_container(metric):
     mapped_name = depl
     if depl in DEPL_MAP:
         mapped_name = DEPL_MAP[depl]
-    return mapped_name + "/" + metric['container']
+    return f"{mapped_name}/" + metric['container']
 
 
 # These deployments have columns in the table, so only these are watched.
-Watched_Deployments = set(["istio-pilot",
-                           "fortioserver",
-                           "fortioclient",
-                           "istio-ingressgateway"])
+Watched_Deployments = {
+    "istio-pilot",
+    "fortioserver",
+    "fortioclient",
+    "istio-ingressgateway",
+}
 
 
 # returns deployment_name
 def metric_by_deployment(metric):
     depl = metric['pod'].rsplit('-', 2)[0]
-    if depl not in Watched_Deployments:
-        return None
-    return depl
+    return None if depl not in Watched_Deployments else depl
 
 
 def compute_min_max_avg(d, groupby=None, xform=None, aggregate=True):
@@ -363,10 +352,7 @@ def main(argv):
     out = p.fetch_cpu_and_mem()
     resp_out = p.fetch_500s_and_400s()
     out.update(resp_out)
-    indent = None
-    if args.indent is not None:
-        indent = int(args.indent)
-
+    indent = int(args.indent) if args.indent is not None else None
     print(json.dumps(out, indent=indent))
 
 

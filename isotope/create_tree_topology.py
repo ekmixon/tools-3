@@ -29,7 +29,7 @@ NUM_REPLICAS = 1
 NUM_LEVELS = 3
 # Amount of dependent or child services each service has.
 NUM_BRANCHES = 3
-NUM_SERVICES = sum([NUM_BRANCHES**i for i in range(NUM_LEVELS)])
+NUM_SERVICES = sum(NUM_BRANCHES**i for i in range(NUM_LEVELS))
 
 Service = Dict[str, Any]
 
@@ -52,7 +52,7 @@ def main() -> None:
                     min(NUM_BRANCHES, remaining_services)):
                 child_path = current_path.copy()
                 child_path.append(str(child_service_i))
-                child_service_name = 'svc-{}'.format('-'.join(child_path))
+                child_service_name = f"svc-{'-'.join(child_path)}"
                 child_service = {
                     'name': child_service_name,
                 }  # type: Dict[str, Any]

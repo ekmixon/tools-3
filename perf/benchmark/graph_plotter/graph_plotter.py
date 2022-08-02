@@ -28,13 +28,19 @@ def plotter(args):
     check_if_args_provided(args)
 
     df = pd.read_csv(args.csv_filepath)
-    telemetry_modes_y_data = {}
     metric_name = get_metric_name(args)
     constructed_query_str = get_constructed_query_str(args)
 
-    for telemetry_mode in args.telemetry_modes:
-        telemetry_modes_y_data[telemetry_mode] = get_data_helper(df, args.query_list, constructed_query_str,
-                                                                 telemetry_mode, metric_name)
+    telemetry_modes_y_data = {
+        telemetry_mode: get_data_helper(
+            df,
+            args.query_list,
+            constructed_query_str,
+            telemetry_mode,
+            metric_name,
+        )
+        for telemetry_mode in args.telemetry_modes
+    }
 
     dpi = 100
     plt.figure(figsize=(1138 / dpi, 871 / dpi), dpi=dpi)
@@ -53,7 +59,7 @@ def plotter(args):
 def check_if_args_provided(args):
     args_all_provided = True
     # print(vars(args))
-    for _, val in vars(args).items():
+    for val in vars(args).values():
         if val == "":
             print("Warning: There is at least one argument that you did not specify with a value.\n")
             args_all_provided = False
@@ -97,23 +103,20 @@ def get_data_helper(df, query_list, query_str, telemetry_mode, metric_name):
         except KeyError as e:
             y_series_data.append(None)
         else:
-            if not data[metric_name].head().empty:
-                if metric_name.startswith('cpu') or metric_name.startswith('mem'):
-                    y_series_data.append(data[metric_name].head(1).values[0])
-                else:
-                    y_series_data.append(data[metric_name].head(1).values[0] / 1000)
-            else:
+            if data[metric_name].head().empty:
                 y_series_data.append(None)
 
+            elif metric_name.startswith('cpu') or metric_name.startswith('mem'):
+                y_series_data.append(data[metric_name].head(1).values[0])
+            else:
+                y_series_data.append(data[metric_name].head(1).values[0] / 1000)
     return y_series_data
 
 
 def get_x_label(args):
     if args.x_axis == "qps":
         return "QPS"
-    if args.x_axis == "conn":
-        return "Connections"
-    return ""
+    return "Connections" if args.x_axis == "conn" else ""
 
 
 def get_y_label(args):

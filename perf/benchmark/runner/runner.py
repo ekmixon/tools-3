@@ -46,10 +46,10 @@ def pod_info(filterstr="", namespace=NAMESPACE, multi_ok=True):
     items = o['items']
 
     if not multi_ok and len(items) > 1:
-        raise Exception("more than one found " + op)
+        raise Exception(f"more than one found {op}")
 
     if not items:
-        raise Exception("no pods found with command [" + cmd + "]")
+        raise Exception(f"no pods found with command [{cmd}]")
 
     i = items[0]
     return POD(i['metadata']['name'], i['metadata']['namespace'],
@@ -78,9 +78,7 @@ def kubectl_cp(from_file, to_file, container):
 
 
 def kubectl_exec(pod, remote_cmd, runfn=run_command, container=None):
-    c = ""
-    if container is not None:
-        c = "-c " + container
+    c = f"-c {container}" if container is not None else ""
     cmd = "kubectl --namespace {namespace} exec {pod} {c} -- {remote_cmd}".format(
         pod=pod,
         remote_cmd=remote_cmd,
@@ -136,8 +134,8 @@ class Fortio:
         self.r = "0.001"
         self.telemetry_mode = telemetry_mode
         self.perf_record = perf_record
-        self.server = pod_info("-lapp=" + server, namespace=self.ns)
-        self.client = pod_info("-lapp=" + client, namespace=self.ns)
+        self.server = pod_info(f"-lapp={server}", namespace=self.ns)
+        self.client = pod_info(f"-lapp={client}", namespace=self.ns)
         self.additional_args = additional_args
         self.filter_fn = filter_fn
         self.extra_labels = extra_labels
@@ -155,7 +153,7 @@ class Fortio:
         elif mesh == "istio":
             self.mesh = "istio"
         else:
-            sys.exit("invalid mesh %s, must be istio or linkerd" % mesh)
+            sys.exit(f"invalid mesh {mesh}, must be istio or linkerd")
 
     def get_protocol_uri_fragment(self):
         return "https" if self.protocol_mode == "grpc" else self.protocol_mode
@@ -176,16 +174,24 @@ class Fortio:
 
     # Baseline is no sidecar mode
     def baseline(self, load_gen_cmd, sidecar_mode):
-        return load_gen_cmd + "_" + sidecar_mode + " " + self.compute_uri(self.server.ip, "direct_port")
+        return f"{load_gen_cmd}_{sidecar_mode} " + self.compute_uri(
+            self.server.ip, "direct_port"
+        )
 
     def serversidecar(self, load_gen_cmd, sidecar_mode):
-        return load_gen_cmd + "_" + sidecar_mode + " " + self.compute_uri(self.server.ip, "port")
+        return f"{load_gen_cmd}_{sidecar_mode} " + self.compute_uri(
+            self.server.ip, "port"
+        )
 
     def clientsidecar(self, load_gen_cmd, sidecar_mode):
-        return load_gen_cmd + "_" + sidecar_mode + " " + self.compute_uri(self.server.labels["app"], "direct_port")
+        return f"{load_gen_cmd}_{sidecar_mode} " + self.compute_uri(
+            self.server.labels["app"], "direct_port"
+        )
 
     def bothsidecar(self, load_gen_cmd, sidecar_mode):
-        return load_gen_cmd + "_" + sidecar_mode + " " + self.compute_uri(self.server.labels["app"], "port")
+        return f"{load_gen_cmd}_{sidecar_mode} " + self.compute_uri(
+            self.server.labels["app"], "port"
+        )
 
     def ingress(self, load_gen_cmd):
         url = urlparse(self.run_ingress)
@@ -205,9 +211,15 @@ class Fortio:
             p.start()
             processes.append(p)
         elif load_gen_type == "nighthawk":
-            p = multiprocessing.Process(target=run_nighthawk,
-                                        args=[self.client.name, sidecar_mode_func(load_gen_cmd, sidecar_mode),
-                                              labels + "_" + sidecar_mode])
+            p = multiprocessing.Process(
+                target=run_nighthawk,
+                args=[
+                    self.client.name,
+                    sidecar_mode_func(load_gen_cmd, sidecar_mode),
+                    f"{labels}_{sidecar_mode}",
+                ],
+            )
+
             p.start()
             processes.append(p)
 
@@ -224,9 +236,9 @@ class Fortio:
     def generate_test_labels(self, conn, qps, size):
         size = size or self.size
         labels = self.run_id
-        labels += "_qps_" + str(qps)
-        labels += "_c_" + str(conn)
-        labels += "_" + str(size)
+        labels += f"_qps_{str(qps)}"
+        labels += f"_c_{str(conn)}"
+        labels += f"_{str(size)}"
 
         if self.mesh == "istio":
             labels += "_"
@@ -236,7 +248,7 @@ class Fortio:
             labels += "linkerd"
 
         if self.extra_labels is not None:
-            labels += "_" + self.extra_labels
+            labels += f"_{self.extra_labels}"
 
         return labels
 
@@ -244,7 +256,7 @@ class Fortio:
         headers_cmd = ""
         if headers is not None:
             for header_val in headers.split(","):
-                headers_cmd += "-H=" + header_val + " "
+                headers_cmd += f"-H={header_val} "
 
         return headers_cmd
 
@@ -252,9 +264,10 @@ class Fortio:
         if duration is None:
             duration = self.duration
 
-        fortio_cmd = (
+        return (
             "fortio load {headers} -jitter={jitter} -c {conn} -qps {qps} -t {duration}s -a -r {r} {cacert_arg} {grpc} "
-            "-httpbufferkb=128 -labels {labels}").format(
+            "-httpbufferkb=128 -labels {labels}"
+        ).format(
             headers=headers_cmd,
             conn=conn,
             qps=qps,
@@ -263,12 +276,11 @@ class Fortio:
             grpc=grpc,
             jitter=jitter,
             cacert_arg=cacert_arg,
-            labels=labels)
-
-        return fortio_cmd
+            labels=labels,
+        )
 
     def generate_nighthawk_cmd(self, cpus, conn, qps, jitter_uniform, duration, labels):
-        labels = "nighthawk_" + labels
+        labels = f"nighthawk_{labels}"
         nighthawk_args = [
             "nighthawk_client",
             "--concurrency {cpus}",
@@ -301,9 +313,7 @@ class Fortio:
         # watch out when moving it.
         nighthawk_args.append("--label {labels}")
 
-        # As the worker count acts as a multiplier, we divide by qps/conn by the number of cpu's to spread load across
-        # the workers so the sum of the workers will target the global qps/connection levels.
-        nighthawk_cmd = " ".join(nighthawk_args).format(
+        return " ".join(nighthawk_args).format(
             conn=round(conn / cpus),
             qps=round(qps / cpus),
             duration=duration,
@@ -311,17 +321,13 @@ class Fortio:
             labels=labels,
             size=self.size,
             cpus=cpus,
-            port_forward=NIGHTHAWK_GRPC_SERVICE_PORT_FORWARD)
-
-        return nighthawk_cmd
+            port_forward=NIGHTHAWK_GRPC_SERVICE_PORT_FORWARD,
+        )
 
     def run(self, headers, conn, qps, size, duration):
         labels = self.generate_test_labels(conn, qps, size)
 
-        grpc = ""
-        if self.protocol_mode == "grpc":
-            grpc = "-grpc -ping"
-
+        grpc = "-grpc -ping" if self.protocol_mode == "grpc" else ""
         cacert_arg = ""
         if self.cacert is not None:
             cacert_arg = "-cacert {cacert_path}".format(cacert_path=self.cacert)
@@ -399,7 +405,7 @@ class Fortio:
 LOCAL_FLAMEDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../flame/")
 PERF_PROXY_FILE = "get_proxy_perf.sh"
 LOCAL_FLAME_PROXY_FILE_PATH = LOCAL_FLAMEDIR + PERF_PROXY_FILE
-LOCAL_FLAMEOUTPUT = LOCAL_FLAMEDIR + "flameoutput/"
+LOCAL_FLAMEOUTPUT = f"{LOCAL_FLAMEDIR}flameoutput/"
 
 
 def run_perf(pod, labels, duration, frequency):
@@ -407,25 +413,27 @@ def run_perf(pod, labels, duration, frequency):
         duration = 240
     if frequency is None:
         frequency = 99
-    os.environ["PERF_DATA_FILENAME"] = labels + ".data"
+    os.environ["PERF_DATA_FILENAME"] = f"{labels}.data"
     print(os.environ["PERF_DATA_FILENAME"])
     exitcode, res = subprocess.getstatusoutput(LOCAL_FLAME_PROXY_FILE_PATH +
                                                " -p {pod} -n {namespace} -d {duration} -f {frequency}".format(
                                                    pod=pod, namespace=NAMESPACE, duration=duration, frequency=frequency))
     # TODO: debug only, update to print output only when the script fail
-    print("run flame graph status: {}".format(exitcode))
-    print("flame graph script output: {}".format(res.strip()))
+    print(f"run flame graph status: {exitcode}")
+    print(f"flame graph script output: {res.strip()}")
 
 
 def validate_job_config(job_config):
     required_fields = {"conn": list, "qps": list, "duration": int}
-    for k in required_fields:
+    for k, exp_type in required_fields.items():
         if k not in job_config:
-            print("missing required parameter {}".format(k))
+            print(f"missing required parameter {k}")
             return False
-        exp_type = required_fields[k]
         if not isinstance(job_config[k], exp_type):
-            print("expecting type of parameter {} to be {}, got {}".format(k, exp_type, type(job_config[k])))
+            print(
+                f"expecting type of parameter {k} to be {exp_type}, got {type(job_config[k])}"
+            )
+
             return False
     return True
 
@@ -461,8 +469,6 @@ def fortio_from_config_file(args):
 def can_connect_to_nighthawk_service():
     # TODO(oschaaf): re-instate going through the gRPC service.
     return True
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        return sock.connect_ex(('127.0.0.1', NIGHTHAWK_GRPC_SERVICE_PORT_FORWARD)) == 0
 
 
 def run_perf_test(args):
@@ -510,7 +516,7 @@ def run_perf_test(args):
             max_tries = 10
             while max_tries > 0 and not can_connect_to_nighthawk_service():
                 time.sleep(0.5)
-                max_tries = max_tries - 1
+                max_tries -= 1
 
         if not can_connect_to_nighthawk_service():
             print("Failure connecting to nighthawk_service")
@@ -533,7 +539,7 @@ def run_nighthawk(pod, remote_cmd, labels):
         pod=pod,
         remote_cmd=remote_cmd,
         namespace=NAMESPACE)
-    print("nighthawk commandline: " + kube_cmd)
+    print(f"nighthawk commandline: {kube_cmd}")
     process = subprocess.Popen(shlex.split(kube_cmd), stdout=subprocess.PIPE)
     (output, err) = process.communicate()
     exit_code = process.wait()
@@ -541,7 +547,7 @@ def run_nighthawk(pod, remote_cmd, labels):
     if exit_code == 0:
         with tempfile.NamedTemporaryFile(dir='/tmp', delete=True) as tmpfile:
             dest = tmpfile.name
-            with open("%s.json" % dest, 'wb') as f:
+            with open(f"{dest}.json", 'wb') as f:
                 f.write(output)
             print("Dumped Nighthawk's json to {dest}".format(dest=dest))
 
@@ -567,11 +573,11 @@ def run_nighthawk(pod, remote_cmd, labels):
                 dest=dest),
                 "{pod}:/var/lib/fortio/{datetime}_nighthawk_{labels}.json".format(pod=pod, labels=labels, datetime=time.strftime("%Y-%m-%d-%H%M%S")), "shell")
     else:
-        print("nighthawk remote execution error: %s" % exit_code)
+        print(f"nighthawk remote execution error: {exit_code}")
         if output:
-            print("--> stdout: %s" % output.decode("utf-8"))
+            print(f'--> stdout: {output.decode("utf-8")}')
         if err:
-            print("--> stderr: %s" % err.decode("utf-8"))
+            print(f'--> stderr: {err.decode("utf-8")}')
 
 
 def csv_to_int(s):
@@ -667,10 +673,14 @@ def get_parser():
 
 
 def define_bool(parser, opt, help_arg, default_val):
+    parser.add_argument(f"--{opt}", help=help_arg, dest=opt, action='store_true')
     parser.add_argument(
-        "--" + opt, help=help_arg, dest=opt, action='store_true')
-    parser.add_argument(
-        "--no_" + opt, help="do not " + help_arg, dest=opt, action='store_false')
+        f"--no_{opt}",
+        help=f"do not {help_arg}",
+        dest=opt,
+        action='store_false',
+    )
+
     val = {opt: default_val}
     parser.set_defaults(**val)
 

@@ -52,9 +52,7 @@ def get_deployment_replicas(namespace, deployment: str):
         ns=namespace, dep=deployment, jsonpath='''-ojsonpath={.status.replicas}''')
     p = subprocess.Popen(cmd.split(' '), stdout=subprocess.PIPE)
     output = p.communicate()[0]
-    if len(output) == 0:
-        return 0
-    return int(output)
+    return 0 if len(output) == 0 else int(output)
 
 
 def wait_deployment(namespace, deployment: str):
@@ -81,16 +79,15 @@ def simulate_sidecar_rollout(istio_percent: float):
     Updates deployments with or without Envoy sidecar.
     wait indicates whether the command wait till all pods become ready.
     '''
-    output = 'Namespace {}, sidecar deployment: {}, nosidecar deployment: {}'.format(
-        TEST_NAMESPACE, ISTIO_DEPLOY, LEGACY_DEPLOY)
+    output = f'Namespace {TEST_NAMESPACE}, sidecar deployment: {ISTIO_DEPLOY}, nosidecar deployment: {LEGACY_DEPLOY}'
+
     # Wait to be stablized before attempting to scale.
     wait_deployment(TEST_NAMESPACE, ISTIO_DEPLOY)
     wait_deployment(TEST_NAMESPACE, LEGACY_DEPLOY)
     istio_count = get_deployment_replicas(TEST_NAMESPACE, ISTIO_DEPLOY)
     legacy_count = get_deployment_replicas(TEST_NAMESPACE, LEGACY_DEPLOY)
     total = istio_count + legacy_count
-    output = 'sidecar replica {}, legacy replica {}\n\n'.format(
-        istio_count, legacy_count)
+    output = f'sidecar replica {istio_count}, legacy replica {legacy_count}\n\n'
     istio_count = int(istio_percent * total)
     legacy_count = total - istio_count
     output += ('======================================\n'
@@ -109,7 +106,7 @@ def continuous_rollout():
     '''
     iteration = 1
     while True:
-        print('Start rollout iteration {}'.format(iteration))
+        print(f'Start rollout iteration {iteration}')
         message = simulate_sidecar_rollout(random.random())
         iteration += 1
         time.sleep(660)

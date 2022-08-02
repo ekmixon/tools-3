@@ -158,7 +158,7 @@ def get_latency_y_data_point(df, telemetry_mode, quantiles):
 def get_telemetry_mode_y_series(release_href_links, release_dates, telemetry_mode, quantiles):
     trending_data = [[]] * len(release_href_links)
     for i in range(len(release_href_links)):
-        release_year = release_dates[i][0:4]
+        release_year = release_dates[i][:4]
         release_month = release_dates[i][4:6]
         release_date = release_dates[i][6:]
         release_list = [release_year, release_month, release_date]

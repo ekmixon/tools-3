@@ -47,58 +47,50 @@ def find_prometheus():
 def setup_promethus():
     port = os.environ.get("PROM_PORT", "9990")
     namespace, deployment = find_prometheus()
-    port_forward = subprocess.Popen([
-        'kubectl',
-        '-n', namespace,
-        'port-forward',
-        deployment,
-        '%s:9090' % port
-    ], stdout=subprocess.PIPE)
+    port_forward = subprocess.Popen(
+        [
+            'kubectl',
+            '-n',
+            namespace,
+            'port-forward',
+            deployment,
+            f'{port}:9090',
+        ],
+        stdout=subprocess.PIPE,
+    )
+
     port_forward.stdout.readline()  # Wait for port forward to be ready
-    return Prometheus('http://localhost:%s/' % port, pid=port_forward.pid)
+    return Prometheus(f'http://localhost:{port}/', pid=port_forward.pid)
 
 
 def standard_queries(namespace, cpu_lim=50, mem_lim=64):
     """Standard queries that should be run against all tests."""
     return [
         Query(
-            '%s: 5xx Requests/s' % namespace,
-            'sum(rate(istio_requests_total{reporter="destination", destination_service_namespace=~"%s", response_code=~"5.."}[1m]))' % namespace,
-            Alarm(
-                lambda error_rate: error_rate > 0,
-                'There were 5xx errors.'
-            ),
-            None
+            f'{namespace}: 5xx Requests/s',
+            'sum(rate(istio_requests_total{reporter="destination", destination_service_namespace=~"%s", response_code=~"5.."}[1m]))'
+            % namespace,
+            Alarm(lambda error_rate: error_rate > 0, 'There were 5xx errors.'),
+            None,
         ),
         Query(
-            '%s: Envoy CPU' % namespace,
-            'rate(container_cpu_usage_seconds_total{container_name="istio-proxy", namespace=~"%s"}[1m]) * %f' % (
-                namespace, CPU_MILLI),
+            f'{namespace}: Envoy CPU',
+            'rate(container_cpu_usage_seconds_total{container_name="istio-proxy", namespace=~"%s"}[1m]) * %f'
+            % (namespace, CPU_MILLI),
             Alarm(
-                lambda cpu: cpu > cpu_lim,
-                'Envoy CPU is unexpectedly high.'
+                lambda cpu: cpu > cpu_lim, 'Envoy CPU is unexpectedly high.'
             ),
-            None
+            None,
         ),
         Query(
-            '%s: Envoy Memory' % namespace,
-            'max(max_over_time(container_memory_usage_bytes{container_name="istio-proxy", namespace=~"%s"}[1m])) * %f' % (
-                namespace, MEM_MB),
+            f'{namespace}: Envoy Memory',
+            'max(max_over_time(container_memory_usage_bytes{container_name="istio-proxy", namespace=~"%s"}[1m])) * %f'
+            % (namespace, MEM_MB),
             Alarm(
-                lambda mem: mem > mem_lim,
-                'Envoy memory is unexpectedly high.'
+                lambda mem: mem > mem_lim, 'Envoy memory is unexpectedly high.'
             ),
-            None
+            None,
         ),
-        # TODO find a way to get average over time, otherwise this will be flakey and miss real issues.
-        # Query(
-        #     '%s: CDS Convergence' % namespace,
-        #     'count(count_values("value", envoy_cluster_manager_cds_version{namespace="%s"}))' % namespace,
-        #     Alarm(
-        #         lambda activeVersions: activeVersions > 1,
-        #         'CDS has multiple versions running'
-        #     )
-        # ),
     ]
 
 
@@ -106,29 +98,28 @@ def istio_requests_sanity(namespace):
     """Ensure that there are some requests to the namespace as a sanity check.
     This won't work for tests which don't report requests through Istio."""
     return Query(
-        '%s: Total Requests/s (sanity check)' %
-        namespace,
-        'sum(rate(istio_requests_total{destination_service_namespace="%s"}[10m]))' %
-        namespace,
+        f'{namespace}: Total Requests/s (sanity check)',
+        'sum(rate(istio_requests_total{destination_service_namespace="%s"}[10m]))'
+        % namespace,
         Alarm(
             lambda qps: qps < 0.5,
-            'There were no requests, the test is likely not running properly.'),
-        None)
+            'There were no requests, the test is likely not running properly.',
+        ),
+        None,
+    )
 
 
 def stability_query(source, test):
     total = 'sum(rate(stability_outgoing_requests_total{source="%s"}[5m]))' % source
     failure = 'sum(rate(stability_outgoing_requests_total{source="%s", succeeded="False"}[5m]))' % source
-    query = Query(
-        '{}: error rate'.format(test),
-        '{}/{}'.format(failure, total),
+    return Query(
+        f'{test}: error rate',
+        f'{failure}/{total}',
         Alarm(
-            lambda errs: errs > 0,
-            'Error rate too high, expected no errors'
+            lambda errs: errs > 0, 'Error rate too high, expected no errors'
         ),
-        'sum(stability_test_instances{test="%s"})' % test
+        'sum(stability_test_instances{test="%s"})' % test,
     )
-    return query
 
 
 class TestAlarms(unittest.TestCase):
@@ -186,19 +177,21 @@ class TestAlarms(unittest.TestCase):
         self.run_queries(queries)
 
     @classmethod
-    def setUpClass(self):
-        self.prom = setup_promethus()
+    def setUpClass(cls):
+        cls.prom = setup_promethus()
 
     @classmethod
-    def tearDownClass(self):
-        os.kill(self.prom.pid, signal.SIGKILL)
+    def tearDownClass(cls):
+        os.kill(cls.prom.pid, signal.SIGKILL)
 
     def run_queries(self, queries):
         for query in queries:
             with self.subTest(name=query.description):
-                if query.running_query:
-                    if self.prom.fetch_value(query.running_query) == 0:
-                        self.skipTest("Test is not running")
+                if (
+                    query.running_query
+                    and self.prom.fetch_value(query.running_query) == 0
+                ):
+                    self.skipTest("Test is not running")
                 errors = self.prom.run_query(query)
                 message = 'Alarms Triggered:'
                 for e in errors:

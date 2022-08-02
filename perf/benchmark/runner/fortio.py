@@ -63,10 +63,7 @@ def convert_data(data):
         obj["p" + str(pp["Percentile"]).replace(".", "")
             ] = int(pp["Value"] * 10 ** 6)
 
-    success = 0
-    if '200' in data["RetCodes"]:
-        success = int(data["RetCodes"]["200"])
-
+    success = int(data["RetCodes"]["200"]) if '200' in data["RetCodes"] else 0
     # "Sizes" key is not in RunType: TCP
     if data["RunType"] == "HTTP":
         obj["errorPercent"] = 100 * \
@@ -87,7 +84,7 @@ def fetch(url):
             print(d)
             data = d.json()
         except Exception:
-            print("Error while fetching from " + url)
+            print(f"Error while fetching from {url}")
             raise
     else:
         data = json.load(open(url))
@@ -129,7 +126,7 @@ def run_command(command):
 def sync_fortio(url, table, selector=None, promUrl="", csv=None, csv_output="", namespace=NAMESPACE):
     get_fortioclient_pod_cmd = "kubectl -n {namespace} get pods | grep fortioclient".format(namespace=namespace)
     fortioclient_pod_name = getoutput(get_fortioclient_pod_cmd).split(" ")[0]
-    temp_dir_path = tempfile.gettempdir() + "/fortio_json_data"
+    temp_dir_path = f"{tempfile.gettempdir()}/fortio_json_data"
     get_fortio_json_cmd = "kubectl cp -c shell {namespace}/{fortioclient}:/var/lib/fortio {tempdir}"\
         .format(namespace=namespace, fortioclient=fortioclient_pod_name, tempdir=temp_dir_path)
     run_command(get_fortio_json_cmd)
@@ -153,7 +150,7 @@ def sync_fortio(url, table, selector=None, promUrl="", csv=None, csv_output="", 
                 while True:
                     line = f.readline()
                     print(line)
-                    if "" == line:
+                    if line == "":
                         print("file finished!")
                         break
                 print(e)
@@ -177,8 +174,10 @@ def sync_fortio(url, table, selector=None, promUrl="", csv=None, csv_output="", 
                     continue
                 min_duration = METRICS_START_SKIP_DURATION + METRICS_END_SKIP_DURATION
                 if min_duration > gd['ActualDuration']:
-                    print("... {} duration={}s is less than minimum {}s".format(
-                        gd["Labels"], gd['ActualDuration'], min_duration))
+                    print(
+                        f"""... {gd["Labels"]} duration={gd['ActualDuration']}s is less than minimum {min_duration}s"""
+                    )
+
                     continue
                 prom_start = calendar.timegm(
                     sd.utctimetuple()) + METRICS_START_SKIP_DURATION
@@ -200,15 +199,12 @@ def sync_fortio(url, table, selector=None, promUrl="", csv=None, csv_output="", 
             cnt += 1
 
     out.close()
-    print("Wrote {} json records to {}".format(cnt, datafile))
+    print(f"Wrote {cnt} json records to {datafile}")
 
     if csv is not None:
         write_csv(csv, data, csv_output)
 
-    if table:
-        return write_table(table, datafile)
-
-    return 0
+    return write_table(table, datafile) if table else 0
 
 
 def write_csv(keys, data, csv_output):
@@ -222,18 +218,15 @@ def write_csv(keys, data, csv_output):
     out.write(keys + "\n")
 
     for gd in data:
-        row = []
-        for key in lst:
-            row.append(str(gd.get(key, '-')))
-
+        row = [str(gd.get(key, '-')) for key in lst]
         out.write(','.join(row) + "\n")
 
     out.close()
-    print("Wrote {} csv records to {}".format(len(data), csv_output))
+    print(f"Wrote {len(data)} csv records to {csv_output}")
 
 
 def write_table(table, datafile):
-    print("table: %s, datafile: %s" % (table, datafile))
+    print(f"table: {table}, datafile: {datafile}")
     p = subprocess.Popen("bq insert {table} {datafile}".format(
         table=table, datafile=datafile).split())
     ret = p.wait()
